@@ -1,5 +1,5 @@
 # SPDX-License-Identifier: AGPL-3.0-only
-import times, sequtils, options, tables
+import std/[times, sequtils, options, tables, uri]
 import prefs_impl
 
 genPrefsType()
@@ -262,11 +262,15 @@ type
 
     hmacKey*: string
     base64Media*: bool
-    minTokens*: int
     enableRss*: bool
     enableDebug*: bool
     proxy*: string
     proxyAuth*: string
+
+    guestAccountsUsePool*: bool
+    guestAccountsPoolUrl*: Uri
+    guestAccountsPoolId*: string
+    guestAccountsPoolAuth*: string
 
     rssCacheTime*: int
     listCacheTime*: int

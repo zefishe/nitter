@@ -1,5 +1,6 @@
 # SPDX-License-Identifier: AGPL-3.0-only
-import parsecfg except Config
+import std/parsecfg except Config
+import std/uri
 import types, strutils
 
 proc get*[T](config: parseCfg.Config; section, key: string; default: T): T =
@@ -36,11 +37,16 @@ proc getConfig*(path: string): (Config, parseCfg.Config) =
     # Config
     hmacKey: cfg.get("Config", "hmacKey", "secretkey"),
     base64Media: cfg.get("Config", "base64Media", false),
-    minTokens: cfg.get("Config", "tokenCount", 10),
     enableRss: cfg.get("Config", "enableRSS", true),
     enableDebug: cfg.get("Config", "enableDebug", false),
     proxy: cfg.get("Config", "proxy", ""),
-    proxyAuth: cfg.get("Config", "proxyAuth", "")
+    proxyAuth: cfg.get("Config", "proxyAuth", ""),
+
+    # GuestAccounts
+    guestAccountsUsePool: cfg.get("GuestAccounts", "usePool", false),
+    guestAccountsPoolUrl: parseUri(cfg.get("GuestAccounts", "poolUrl", "")),
+    guestAccountsPoolAuth: cfg.get("GuestAccounts", "poolAuth", ""),
+    guestAccountsPoolId: cfg.get("GuestAccounts", "poolId", cfg.get("Server", "hostname", ""))
   )
 
   return (conf, cfg)

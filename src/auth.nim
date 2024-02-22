@@ -1,5 +1,6 @@
 #SPDX-License-Identifier: AGPL-3.0-only
-import std/[asyncdispatch, times, json, random, sequtils, strutils, tables, packedsets, os]
+import std/[httpclient, asyncdispatch, times, json, random, sequtils, strutils, tables, packedsets, os, uri]
+import nimcrypto
 import types
 import experimental/parser/guestaccount
 
@@ -197,13 +198,55 @@ proc initAccountPool*(cfg: Config; path: string) =
   elif fileExists(path):
     log "Parsing JSON guest accounts file: ", path
     accountPool = parseGuestAccounts(path)
-  else:
-    echo "[accounts] ERROR: ", path, " not found. This file is required to authenticate API requests."
+  elif not cfg.guestAccountsUsePool:
+    echo "[accounts] ERROR: ", path, " not found. This file is required to authenticate API requests. Alternatively, configure the guest account pool in nitter.conf"
     quit 1
 
-  let accountsPrePurge = accountPool.len
   accountPool.keepItIf(not it.hasExpired)
 
   log "Successfully added ", accountPool.len, " valid accounts."
-  if accountsPrePurge > accountPool.len:
-    log "Purged ", accountsPrePurge - accountPool.len, " expired accounts."
+
+proc updateAccountPool*(cfg: Config) {.async.} =
+  if not cfg.guestAccountsUsePool:
+    return
+
+  # wait for a few seconds before fetching guest accounts, so that
+  # /.well-known/... is served correctly
+  await sleepAsync(10 * 1000)
+
+  while true:
+    if accountPool.len == 0:
+      log "fetching more accounts from service"
+
+      let client = newAsyncHttpClient("nitter-accounts")
+
+      try:
+        let resp = await client.get($(cfg.guestAccountsPoolUrl ? {"id": cfg.guestAccountsPoolId, "auth": cfg.guestAccountsPoolAuth}))
+        let guestAccounts = await resp.body
+
+        log "status code from service: ", resp.status
+
+        for line in guestAccounts.splitLines:
+          if line != "":
+            accountPool.add parseGuestAccount(line)
+
+      except Exception as e:
+        log "failed to fetch from accounts service: ", e.msg
+      finally:
+        client.close()
+
+      accountPool.keepItIf(not it.hasExpired)
+
+    await sleepAsync(3600 * 1000)
+
+proc getAuthHash*(cfg: Config): string =
+  if cfg.guestAccountsPoolAuth.len == 0:
+    # If somebody turns on pool auth and provides a dummy key, we should
+    # prevent third parties from using that mis-configured auth and impersonate
+    # this instance
+    log "poolAuth is empty, authentication with accounts service will fail"
+    return ""
+
+  let hashStr = $sha_256.digest(cfg.guestAccountsPoolAuth)
+
+  return hashStr.toLowerAscii
